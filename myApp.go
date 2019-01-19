@@ -38,7 +38,12 @@ func initExample() error {
 	db := session.DB("MyFirstApp")
 
 	//clean the db on each reboot. no need to clear it now
+	collections := [2]string{"add", "sub"}
+	for _, collection := range collections {
+		db.C(collection).RemoveAll(nil)
+	}
 
+	// passing mongoDb reference to our custom app
 	app = OurApp.NewOperationApplication(db)
 
 	// Start the listner

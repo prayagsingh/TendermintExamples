@@ -2,6 +2,8 @@ package OurApp
 
 import (
 	"fmt"
+	"time"
+
 	//"reflect"
 	"encoding/binary"
 	"mint/code"
@@ -18,44 +20,50 @@ var db *mgo.Database
 
 // Structure to store the data to the mongoDb
 type StoreResult struct {
-	TxnID    bson.ObjectId `bson:"_id" json:"_id"`
-	User     string        `bson:"username" json:"username"`
-	ParamOne int           `bson:"paramone" json:"paramone"`
-	ParamTwo int           `bson:"paramtwo" json:"paramtwo"`
-	Result   string        `bson:"result" json:"result"`
+	TxnID     bson.ObjectId `bson:"_id"       json:"_id"`
+	User      string        `bson:"username"  json:"username"`
+	ParamOne  int           `bson:"paramone"  json:"paramone"`
+	ParamTwo  int           `bson:"paramtwo"  json:"paramtwo"`
+	Result    string        `bson:"result"    json:"result"`
+	Timestamp time.Time     `bson:"timestamp" json:"timestamp"`
 }
 
 // Our custom methods/structure
 func add(a int, b int) string {
 	c := 0
 	c = a + b
-	//fmt.Print("\n Inside add function and value of c is: ",c)
-	return (fmt.Sprintf("%02x", c)) // '0' force using zero, '2' set the output size as two char, 'x' convert to hex
+	fmt.Print("\n Inside add function and value of c is: ", c)
+	return (fmt.Sprintf("%05x", c)) // '0' force using zero, '2' set the output size as two char, 'x' convert to hex
 }
 
 func sub(a int, b int) string {
 	c := 0
 	c = a - b
 	//fmt.Print("\n Inside sub function and value of c is: ",c)
-	return (fmt.Sprintf("%02x", c))
+	return (fmt.Sprintf("%05x", c))
 }
 
-// our application which will use Baseapplication under application.go
+// OurApplication which will use Baseapplication which is under application.go
 type OperationApplication struct {
 	types.BaseApplication
+	txnCount int // stores the count of all the total deliver_tx
+	hashCout int // stores the count of total commit
 }
 
-//
+// NewOperationApplication which returns OperationApplication struct
 func NewOperationApplication(dbCopy *mgo.Database) *OperationApplication {
 	db = dbCopy
 	return &OperationApplication{}
 }
 
-// tendermint methods like Info, DeliverTx, CheckTx, Query, Commit, SetOption
+// Tendermint methods
+
+// Info method
 func (app *OperationApplication) Info(req types.RequestInfo) (resInfo types.ResponseInfo) {
-	return types.ResponseInfo{Data: fmt.Sprintf("{\"size\":%v}", 0)}
+	return types.ResponseInfo{Data: fmt.Sprintf("{\"hashes\":%v,\"txns\":%v}", app.hashCout, app.txnCount)}
 }
 
+// DeliverTx method
 func (app *OperationApplication) DeliverTx(tx []byte) types.ResponseDeliverTx {
 	//fmt.Print("\n Inside DeliverTx Module and value of tx is: ", tx)
 	//fmt.Print("\n  Length of tx is: ", len(tx))
@@ -83,7 +91,6 @@ func (app *OperationApplication) DeliverTx(tx []byte) types.ResponseDeliverTx {
 
 	var result string
 	var storeresult StoreResult
-	dataHash := make([]byte, 5)
 
 	switch txSplit[3] {
 	case "add":
@@ -94,7 +101,10 @@ func (app *OperationApplication) DeliverTx(tx []byte) types.ResponseDeliverTx {
 		fmt.Println("\n None of the option is selected")
 	}
 
+	dataHash := make([]byte, 8)
 	copy(dataHash[:], result)
+	//resultParse, err := strconv.Atoi(result)
+	//binary.PutUvarint(dataHash, uint64(resultParse))
 	fmt.Println("\n Result is: ", result, " value of data is: ", dataHash)
 
 	// assigning values to the storeresult struct
@@ -103,6 +113,7 @@ func (app *OperationApplication) DeliverTx(tx []byte) types.ResponseDeliverTx {
 	storeresult.ParamOne = firstParam
 	storeresult.ParamTwo = secondParam
 	storeresult.Result = result
+	storeresult.Timestamp = time.Now()
 
 	mongoError := db.C(txSplit[3]).Insert(storeresult)
 
@@ -110,25 +121,74 @@ func (app *OperationApplication) DeliverTx(tx []byte) types.ResponseDeliverTx {
 		panic(mongoError)
 	}
 
-	return types.ResponseDeliverTx{Code: code.CodeTypeOK, Data: dataHash, Log: "Txn executed check data for result", Tags: nil}
+	// converting time.now to string. Value inside Format is fixed by GoLang devs else get random val
+	TxnTime := storeresult.Timestamp.Format("2006-01-02 15:04:05.000000000")
+	fmt.Println("\n Val of TxnTime is: ", TxnTime)
+
+	// increasing the txn Count
+	app.txnCount++
+
+	return types.ResponseDeliverTx{
+		Code: code.CodeTypeOK,
+		Data: dataHash,
+		Log:  fmt.Sprintf("Txn executed with timestamp : %s and TxnCount is %d", TxnTime, app.txnCount)}
 }
 
+// CheckTx method
 func (app *OperationApplication) CheckTx(tx []byte) types.ResponseCheckTx {
-	// TODO
-	// 1. need to unmarshel the data since mongodb stores data in json format
-	// 2. fetch the stored data to check if its not empty
-	// 3. will fetch the data by username. it might return all the txns correspondig to the username
+	// pattern for sending checktx = check_tx "username,method"
+	storeresult := StoreResult{}
 
-	return types.ResponseCheckTx{Code: code.CodeTypeOK}
+	// convert from ascii to respective values
+	txStr := string(tx)
+	fmt.Print("\n Inside the Check_tx module nd value of tx is: ", txStr)
+	txSplit := strings.Split(txStr, ",")
+	fmt.Print("\n Value of txSplit is: ", txSplit)
+
+	//fetching the data from the mongodb for verification
+	//errMongo := db.C(txSplit[1]).Find(bson.M{"username": txSplit[0]}).Select(bson.M{"username": txSplit[0]}).One(&temp)
+	errMongo := db.C(txSplit[1]).Find(bson.M{"username": txSplit[0]}).Sort("-timestamp").One(&storeresult)
+
+	if errMongo != nil {
+		panic(errMongo)
+	}
+
+	fmt.Printf("\n Value of query to mongo is: %+v", storeresult)
+	fmt.Print("\n Txn Id is : ", storeresult.TxnID,
+		" UserName is: ", storeresult.User,
+		" Result is : ", storeresult.Result)
+
+	// Data takes byte type in return statement
+	dataHash := make([]byte, 5)
+	copy(dataHash[:], storeresult.Result)
+
+	// checking if the data is empty. If yes then return badCode
+	if app.txnCount == 0 {
+		return types.ResponseCheckTx{
+			Code: code.CodeTypeBadData,
+			Log:  fmt.Sprintf("No data found and TxnCount is %d ", app.txnCount)}
+
+	}
+	return types.ResponseCheckTx{
+		Code: code.CodeTypeOK,
+		Data: dataHash,
+		Log:  fmt.Sprintf("Txn is not empty.Txn stored at time: %s", storeresult.Timestamp)}
 }
 
+// Commit method
 func (app *OperationApplication) Commit() types.ResponseCommit {
+	app.hashCout++
+
+	if app.txnCount == 0 {
+		return types.ResponseCommit{}
+	}
 	appHash := make([]byte, 8)
-	var count int64 = 100
-	binary.PutVarint(appHash, count)
+	binary.PutUvarint(appHash, uint64(app.txnCount))
 	return types.ResponseCommit{Data: appHash}
 }
 
+// Query method
 func (app *OperationApplication) Query(reqQuery types.RequestQuery) (resQuery types.ResponseQuery) {
+	
 	return
 }

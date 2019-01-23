@@ -6,9 +6,10 @@ import (
 
 	//"reflect"
 	"encoding/binary"
-	"mint/code"
 	"strconv"
 	"strings"
+
+	"github.com/tendermint/tendermint/abci/example/code"
 
 	"github.com/tendermint/tendermint/abci/types"
 	mgo "gopkg.in/mgo.v2"
@@ -26,6 +27,18 @@ type StoreResult struct {
 	ParamTwo  int           `bson:"paramtwo"  json:"paramtwo"`
 	Result    string        `bson:"result"    json:"result"`
 	Timestamp time.Time     `bson:"timestamp" json:"timestamp"`
+}
+
+// State of the block
+type State struct {
+	AppHash []byte `bson:"app_hash"`
+	Height  int64  `bson:"height"`
+}
+
+// function to load the previous state
+func loadState(loaddb *mgo.Database) State {
+	var state State
+	return state
 }
 
 // Our custom methods/structure
@@ -48,11 +61,13 @@ type OperationApplication struct {
 	types.BaseApplication
 	txnCount int // stores the count of all the total deliver_tx
 	hashCout int // stores the count of total commit
+	//state    State
 }
 
 // NewOperationApplication which returns OperationApplication struct
 func NewOperationApplication(dbCopy *mgo.Database) *OperationApplication {
 	db = dbCopy
+	fmt.Print("\n Inside NewOperation function")
 	return &OperationApplication{}
 }
 
@@ -65,17 +80,18 @@ func (app *OperationApplication) Info(req types.RequestInfo) (resInfo types.Resp
 
 // DeliverTx method
 func (app *OperationApplication) DeliverTx(tx []byte) types.ResponseDeliverTx {
-	//fmt.Print("\n Inside DeliverTx Module and value of tx is: ", tx)
-	//fmt.Print("\n  Length of tx is: ", len(tx))
+	fmt.Print("\n Inside DeliverTx Module and value of tx is: ", tx)
+	time.Sleep(5)
+	fmt.Print("\n  Length of tx is: ", len(tx))
 
 	// convert from ascii to respective values
 	txStr := string(tx)
-	//fmt.Printf("\n Value of txStr is %s ", txStr)
+	fmt.Printf("\n Value of txStr is %s ", txStr)
 
 	//Splitting the above string using strings package
 	txSplit := strings.Split(txStr, ",")
 
-	//fmt.Print("\n Value of txSplit is: ", txSplit)
+	fmt.Print("\n Value of txSplit is: ", txSplit)
 
 	// Convert bytes into int
 	userNameParam := txSplit[0]
@@ -136,7 +152,7 @@ func (app *OperationApplication) DeliverTx(tx []byte) types.ResponseDeliverTx {
 
 // CheckTx method
 func (app *OperationApplication) CheckTx(tx []byte) types.ResponseCheckTx {
-	// pattern for sending checktx = check_tx "username,method"
+	// pattern for sending checktx = check_tx "username,val1,val2,method"
 	storeresult := StoreResult{}
 
 	// convert from ascii to respective values
@@ -147,13 +163,13 @@ func (app *OperationApplication) CheckTx(tx []byte) types.ResponseCheckTx {
 
 	//fetching the data from the mongodb for verification
 	//errMongo := db.C(txSplit[1]).Find(bson.M{"username": txSplit[0]}).Select(bson.M{"username": txSplit[0]}).One(&temp)
-	errMongo := db.C(txSplit[1]).Find(bson.M{"username": txSplit[0]}).Sort("-timestamp").One(&storeresult)
+	errMongo := db.C(txSplit[3]).Find(bson.M{"username": txSplit[0]}).Sort("-timestamp").One(&storeresult)
 
 	if errMongo != nil {
 		panic(errMongo)
 	}
 
-	fmt.Printf("\n Value of query to mongo is: %+v", storeresult)
+	//fmt.Printf("\n Value of query to mongo is: %+v", storeresult)
 	fmt.Print("\n Txn Id is : ", storeresult.TxnID,
 		" UserName is: ", storeresult.User,
 		" Result is : ", storeresult.Result)
@@ -163,9 +179,10 @@ func (app *OperationApplication) CheckTx(tx []byte) types.ResponseCheckTx {
 	copy(dataHash[:], storeresult.Result)
 
 	// checking if the data is empty. If yes then return badCode
+	fmt.Print("\n value of txnCount is: ", app.txnCount)
 	if app.txnCount == 0 {
 		return types.ResponseCheckTx{
-			Code: code.CodeTypeBadData,
+			Code: code.CodeTypeUnknownError,
 			Log:  fmt.Sprintf("No data found and TxnCount is %d ", app.txnCount)}
 
 	}
@@ -173,6 +190,8 @@ func (app *OperationApplication) CheckTx(tx []byte) types.ResponseCheckTx {
 		Code: code.CodeTypeOK,
 		Data: dataHash,
 		Log:  fmt.Sprintf("Txn is not empty.Txn stored at time: %s", storeresult.Timestamp)}
+
+	//return types.ResponseCheckTx{Code: code.CodeTypeOK}
 }
 
 // Commit method
@@ -184,11 +203,38 @@ func (app *OperationApplication) Commit() types.ResponseCommit {
 	}
 	appHash := make([]byte, 8)
 	binary.PutUvarint(appHash, uint64(app.txnCount))
+	// new lines added
+	//app.state.AppHash = appHash
+	//app.state.Height++
+	//saveState(app.state)
 	return types.ResponseCommit{Data: appHash}
 }
 
 // Query method
 func (app *OperationApplication) Query(reqQuery types.RequestQuery) (resQuery types.ResponseQuery) {
-	
-	return
+	//query returns last txn with operation applied i.e add/sub with timestamp
+	// query will accept only single input, can't send like this query "a,b" or query "a b"
+	fmt.Println("\n value of req Query Data is: ", string(reqQuery.Data))
+	queryRequest := string(reqQuery.Data)
+	var docsCount int
+	var err error
+	switch queryRequest {
+	case "add":
+		docsCount, err = db.C("add").Count()
+	case "sub":
+		docsCount, err = db.C("sub").Count()
+	case "txn":
+		docsCount = app.txnCount
+	case "hash":
+		docsCount = app.hashCout
+	}
+	if err != nil {
+		panic(err)
+	}
+	appHash := make([]byte, 8)
+	binary.PutUvarint(appHash, uint64(docsCount))
+	//fmt.Print("\n Collection list is: ", temp)
+	fmt.Printf("\n Total number of transaction of operation %s is %d  ", queryRequest, appHash)
+	//fmt.Println("\n after formatting: ", []byte(fmt.Sprintf("%02x", docsCount)))
+	return types.ResponseQuery{Value: appHash}
 }

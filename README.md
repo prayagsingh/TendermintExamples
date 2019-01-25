@@ -12,7 +12,7 @@ It contains the sample code for tendermint
 Here we are trying to perform simple addition and subtraction operations on tendermint and trying to explore its functionality. 
 There are two files 
 ##### 1. myApp.go  : used as a Server. Creating a connection to the MongoDB
-##### 2. Operations.go : Implements all the methods like Info, Check_tx, Deliver_tx, Commit and Query of Tendermint and some custom methods like Addition and Subtraction.
+##### 2. Operations.go : Implement all the methods like Info, Check_tx, Deliver_tx, Commit and Query of Tendermint and some custom methods like Addition and Subtraction.
 ##### 3. Format for sending the Input:
   ###### 3.a: deliver_tx "username,int,int,operation" like deliver_tx "Prayag,1,2,add"
   ###### 3.b: check_tx "username,int,int,operation"

@@ -40,6 +40,6 @@ There are two files
 2. To query the txn ---> curl 'localhost:26657/abci_query?data="add"'
 # NOTE:
 1.  To send the txns using RPC first we need to start the tendermint node using command "tendermint node" on a console
-2. Always run "tendermint unsafe_reset_all" and "tendermint init" before "tendermint node" command.
+2. Always run "tendermint unsafe_reset_all" if you don't want previous blockchain data (never run this command on production because it will wipe out all the data) and "tendermint init" before "tendermint node" command.
 
     

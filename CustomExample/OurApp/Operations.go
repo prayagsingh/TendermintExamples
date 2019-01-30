@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/tendermint/tendermint/abci/example/code"
-
 	"github.com/tendermint/tendermint/abci/types"
+	sm "github.com/tendermint/tendermint/state"
 	mgo "gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 )
@@ -30,15 +30,16 @@ type StoreResult struct {
 	Timestamp time.Time     `bson:"timestamp" json:"timestamp"`
 }
 
-// State of the block
-type State struct {
+// MyState using State structure
+type MyState struct {
+	state   sm.State
 	TotTxn  int64  `bson:"tottxn"`
 	AppHash []byte `bson:"app_hash"`
 	Height  int64  `bson:"height"`
 }
 
 // function to save the current state so that it can be loaded from the same state
-func saveState(state State) {
+func saveState(state MyState) {
 	stateBytes, err := json.Marshal(state)
 	fmt.Print("\n Val of stateBytes is: ", string(stateBytes))
 	if err != nil {
@@ -51,20 +52,22 @@ func saveState(state State) {
 }
 
 // function to load the previous state
-func loadState(db *mgo.Database) State {
-	var state State
+func loadState(db *mgo.Database) MyState {
+	var state MyState
 	//err := db.C("CurrentState").Find(bson.M{"_id": ""}).Sort("-timestamp").One(&state)
 	dbSize, errCount := db.C("CurrentState").Count()
 	fmt.Print("\n Value of dbSize is: ", dbSize)
 	if errCount != nil {
 		panic(errCount)
 	}
-	err := db.C("CurrentState").Find(bson.M{}).Sort("-_id").One(&state)
-	if err != nil {
-		panic(err)
+	if dbSize > 0 {
+		err := db.C("CurrentState").Find(bson.M{}).Sort("-_id").One(&state)
+		if err != nil {
+			panic(err)
+		}
 	}
 	//var state State
-	fmt.Print("\n Value of state is: txnCount: ", state.TotTxn,
+	fmt.Print("\n Inside loadState Func and Value of state is: txnCount: ", state.TotTxn,
 		"\n Block height: ", state.Height,
 		"\n Hash value: ", fmt.Sprintf("%x", state.AppHash))
 
@@ -91,7 +94,7 @@ type OperationApplication struct {
 	types.BaseApplication
 	//txnCount int // stores the count of all the total deliver_tx
 	//hashCout int // stores the count of total commit
-	state State
+	state MyState
 }
 
 // NewOperationApplication which returns OperationApplication struct
@@ -106,7 +109,28 @@ func NewOperationApplication(dbCopy *mgo.Database) *OperationApplication {
 
 // Info method
 func (app *OperationApplication) Info(req types.RequestInfo) (resInfo types.ResponseInfo) {
-	return types.ResponseInfo{Data: fmt.Sprintf("{\"hashes\":%v,\"Total txns so far\":%v}", app.state.AppHash, app.state.TotTxn)}
+	fmt.Print("\n\n Inside INFO method and Values are: ",
+		"\n Version: ", req.Version,
+		"\n Block Version: ", req.BlockVersion,
+		"\n P2P version: ", req.P2PVersion, "\n")
+
+	resInfo.LastBlockHeight = app.state.Height
+	resInfo.LastBlockAppHash = app.state.AppHash
+	fmt.Print("\n Value of Last Block Height: ", resInfo.LastBlockHeight,
+		"\n Last block App hash: ", fmt.Sprintf("%x", resInfo.LastBlockAppHash))
+	//return resInfo
+	return types.ResponseInfo{
+		Data:             fmt.Sprintf("{\"Total txns so far\":%v}", app.state.TotTxn),
+		Version:          req.Version,
+		LastBlockHeight:  app.state.Height,
+		LastBlockAppHash: app.state.AppHash}
+}
+
+// BeginBlock   ---> track the block hash and header Info
+func (app *OperationApplication) BeginBlock(params types.RequestBeginBlock) types.ResponseBeginBlock {
+	fmt.Print("\n Inside Begin Block function \n")
+	return types.ResponseBeginBlock{}
+
 }
 
 // DeliverTx method
@@ -190,26 +214,7 @@ func (app *OperationApplication) CheckTx(tx []byte) types.ResponseCheckTx {
 	// convert from ascii to respective values
 	txStr := string(tx)
 	fmt.Print("\n Inside the Check_tx module nd value of tx is: ", txStr)
-	/*	txSplit := strings.Split(txStr, ",")
-		fmt.Print("\n Value of txSplit is: ", txSplit)
 
-		//fetching the data from the mongodb for verification
-		//errMongo := db.C(txSplit[1]).Find(bson.M{"username": txSplit[0]}).Select(bson.M{"username": txSplit[0]}).One(&temp)
-		errMongo := db.C(txSplit[3]).Find(bson.M{"username": txSplit[0]}).Sort("-timestamp").One(&storeresult)
-
-		if errMongo != nil {
-			panic(errMongo)
-		}
-
-		//fmt.Printf("\n Value of query to mongo is: %+v", storeresult)
-		fmt.Print("\n Txn Id is : ", storeresult.TxnID,
-			" UserName is: ", storeresult.User,
-			" Result is : ", storeresult.Result)
-
-		// Data takes byte type in return statement
-		dataHash := make([]byte, 5)
-		copy(dataHash[:], storeresult.Result)
-	*/
 	// checking if the data is empty. If yes then return badCode
 	fmt.Print("\n value of txnCount is: ", app.state.TotTxn)
 	if app.state.TotTxn == 0 {
@@ -229,16 +234,25 @@ func (app *OperationApplication) CheckTx(tx []byte) types.ResponseCheckTx {
 
 // Commit method
 func (app *OperationApplication) Commit() types.ResponseCommit {
-	//app.hashCout++
-	fmt.Print("/n Inside Commmit method and txnCount is: ", app.state.TotTxn)
+
+	fmt.Print("\n\n Inside Commmit method and txnCount is: ", app.state.TotTxn)
+
 	if app.state.TotTxn == 0 {
 		return types.ResponseCommit{}
 	}
 	appHash := make([]byte, 8)
 	binary.PutUvarint(appHash, uint64(app.state.TotTxn))
-	// new lines added
+
 	app.state.AppHash = appHash
+	// this is the one of the those hash which is compared to ResponseInfo LastBlockHash when we starting
+	// tendermint node. If this hash is not as same as resinfo hash then we won't be able to start
+	// the node. will get Replay error which is under checkAppHash function in replay.go
+	app.state.state.AppHash = appHash
+
+	fmt.Printf("\n Value of app.state.state.AppHash in HEX is: %X", app.state.state.AppHash)
 	app.state.Height++
+	app.state.state.LastBlockHeight = app.state.Height
+	fmt.Printf("\n Value of app.state.state.LastBlockHeight is: %d", app.state.state.LastBlockHeight)
 	saveState(app.state)
 	return types.ResponseCommit{Data: appHash}
 }

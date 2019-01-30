@@ -2,7 +2,7 @@
 It contains the sample code for tendermint
 
 ## Description of my first Tendermint Dapp
-### Prerequities
+### Prerequisites
 1. GoLang
 2. Tendermint
 3. MongoDb

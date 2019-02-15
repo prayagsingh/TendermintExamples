@@ -3,7 +3,7 @@ It contains the sample code for tendermint
 
 ## Download CustomExample to your local Machine to test this Dapp
 
-## Description of my first Tendermint Dapp
+## Description
 ### Prerequisites
 1. GoLang
 2. Tendermint

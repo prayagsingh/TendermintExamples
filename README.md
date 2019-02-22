@@ -38,7 +38,7 @@ There are two files
   ###### 2.e: query "add/sub"
   
 ###### Using RPC client
-1. To send, check and commit the txn --> curl http://localhosst:26657/broadcast_tx_commit?tx=/"Prayag,1,2,add/"
+1. To send, check and commit the txn -->  curl http://localhost:26657/broadcast_tx_commit?tx=\"Prayag,1,2,add\"
 2. To query the txn ---> curl 'localhost:26657/abci_query?data="add"'
 # NOTE:
 1.  To send the txns using RPC first we need to start the tendermint node using command "tendermint node" on a console

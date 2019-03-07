@@ -45,3 +45,13 @@ There are two files
 2. Always run "tendermint unsafe_reset_all" if you don't want previous blockchain data (never run this command on production because it will wipe out all the data) and "tendermint init" before "tendermint node" command.
 
     
+### How to run application on multiple machines
+
+#### How to setup the nodes
+1. Check the connection between the machines using command "ping machine_IP"
+2. If Step 1 is fine then generate the seeds(node ID) on both the machines using command "tendermint show_node_id".
+3. Now add all the details of pub-Key of different machine in the genesis.json file. 
+4. Replace the genesis.json file of all the machines by above genesis.json file.
+5. Now add the seeds generated in the Step 2 in the config.toml(~/.tendermint/config) like "seed_Val@IP:port". deafult port is 26656.
+6. Copy the above in persistent_peers section in the config.toml
+7. save the file and then exit

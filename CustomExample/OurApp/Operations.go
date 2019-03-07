@@ -15,7 +15,9 @@ import (
 	"github.com/tendermint/tendermint/abci/example/code"
 	"github.com/tendermint/tendermint/abci/types"
 	sm "github.com/tendermint/tendermint/state"
+	block "github.com/tendermint/tendermint/types"
 	mgo "gopkg.in/mgo.v2"
+
 	"gopkg.in/mgo.v2/bson"
 )
 
@@ -106,13 +108,12 @@ func sub(a int, b int) string {
 // OperationApplication which will use Baseapplication which is under application.go
 type OperationApplication struct {
 	types.BaseApplication
-	//txnCount int // stores the count of all the total deliver_tx
-	//hashCout int // stores the count of total commit
 	State MyState
 	// validator updates
 	Validator MyValidator
 	//validator set
 	ValUpdates []types.ValidatorUpdate
+	bl         block.Block
 }
 
 // NewOperationApplication which returns OperationApplication struct
@@ -149,7 +150,9 @@ func (app *OperationApplication) Info(req types.RequestInfo) (resInfo types.Resp
 func (app *OperationApplication) BeginBlock(params types.RequestBeginBlock) types.ResponseBeginBlock {
 	fmt.Print("\n\n Inside Begin Block function \n")
 	fmt.Print("\n Header height: ", params.Header.Height)
-
+	//fmt.Print("\n block.apphash before assigning: ", app.bl.AppHash)
+	app.bl.AppHash = app.State.AppHash
+	//fmt.Print("\n block.apphash after assigning: ", app.bl.AppHash)
 	return types.ResponseBeginBlock{}
 
 }
@@ -318,6 +321,7 @@ func (app *OperationApplication) Query(reqQuery types.RequestQuery) (resQuery ty
 // InitChain function
 func (app *OperationApplication) InitChain(req types.RequestInitChain) types.ResponseInitChain {
 	fmt.Print("\n\n Inside InitChain function ")
+
 	for _, v := range req.Validators {
 		result := app.updateValidator(v)
 		if result.IsErr() { // IsErr() return true if code is not OK
@@ -383,7 +387,9 @@ func (app *OperationApplication) updateValidator(v types.ValidatorUpdate) (res t
 		fmt.Print("\n\n Value of ValUpddates is: ", app.ValUpdates)
 	}
 	// we only update the changes array if we successfully updated the tree
-	app.State.TotTxn++
+	if app.State.TotTxn > 0 {
+		app.State.TotTxn++
+	}
 	return types.ResponseDeliverTx{Code: code.CodeTypeOK}
 }
 

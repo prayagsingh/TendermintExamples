@@ -48,10 +48,11 @@ There are two files
 ### How to run application on multiple machines
 
 #### How to setup the nodes
-1. Check the connection between the machines using command "ping machine_IP"
-2. If Step 1 is fine then generate the seeds(node ID) on both the machines using command "tendermint show_node_id".
-3. Now add all the details of pub-Key of different machine in the genesis.json file. 
+1. Get the machine_IP using command "ifconfig"
+2. Check the connection between the machines using command "ping machine_IP"
+3. If Step 1 is fine then generate the seeds(node ID) on both the machines using command "tendermint show_node_id".
+4. Now add all the details of pub-Key of all the machine in the genesis.json file. 
 4. Replace the genesis.json file of all the machines by above genesis.json file.
-5. Now add the seeds generated in the Step 2 in the config.toml(~/.tendermint/config) like "seed_Val@IP:port". deafult port is 26656.
-6. Copy the above in persistent_peers section in the config.toml
-7. save the file and then exit
+6. Now add the seeds generated in the Step 3 in the config.toml(~/.tendermint/config) like "1e7fbe1f17ab10ce990c8704d7ec8e83694f9dde@machine_IP:26656". If there are two machines say Machine A and B then we need to add the seed and machine_Ip of Machine B in config.toml of Machine A and vice-versa. 
+7. Copy the above seeds in persistent_peers section in the config.toml
+8. save the file and then exit
